@@ -85,10 +85,8 @@ def test_engine_select_projects_multi(temp_dir):
     engine = PlatformDetectionEngine()
     detected = [("terraform", "/path/a"), ("ansible", "/path/b")]
     
-    with patch('questionary.checkbox') as mock_checkbox:
-        mock_instance = MagicMock()
-        mock_checkbox.return_value = mock_instance
-        mock_instance.ask.return_value = [("terraform", "/path/a")]
+    with patch('inquirer.prompt') as mock_prompt:
+        mock_prompt.return_value = {'projects': [("terraform", "/path/a")]}
         
         selected = engine.select_projects(str(temp_dir), detected)
         assert len(selected) == 1

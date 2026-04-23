@@ -116,7 +116,7 @@ class PlatformDetectionEngine:
             AnsibleDetector()
         ]
 
-    def detect(self, root_dir: str, max_depth: int = 2) -> List[tuple[str, str]]:
+    def detect(self, root_dir: str, max_depth: int = 3) -> List[tuple[str, str]]:
         """
         Detects all IaC platforms and their directories.
         Returns a list of tuples [(platform_name, absolute_directory_path), ...].
@@ -171,24 +171,31 @@ class PlatformDetectionEngine:
             return detected_projects
 
         # Multiple projects found, prompt for selection
-        import questionary
-        logger.info("Multiple IaC projects detected. Please select the ones you want to track:")
+        import inquirer
+        from inquirer.themes import GreenPassion
         
+        
+        logger.info("Multiple IaC projects detected. Please select the ones you want to monitor:")
+        click.echo("")
+        click.echo("")
+
         choices = []
         for platform, path in detected_projects:
             rel_path = os.path.relpath(path, root_dir)
-            # Format: relative_path (platform)
-            label = f"{rel_path:<30} [{platform}]"
-            choices.append(questionary.Choice(label, value=(platform, path)))
+            # Format: relative_path [platform]
+            label = f"{rel_path:<40} [{platform.upper()}]"
+            choices.append((label, (platform, path)))
 
-        selected = questionary.checkbox(
-            "Select projects to monitor (Space to select, Enter to confirm):",
-            choices=choices
-        ).ask()
+        questions = [
+            inquirer.Checkbox(
+                'projects',
+                message="Select projects to monitor (Space to select, Enter to confirm)",
+                choices=choices,
+                carousel=True
+            ),
+        ]
 
-        if selected:
-            for platform, path in selected:
-                logger.info(f"Selected {platform.upper()} project at {path}")
-            return selected
-        
-        return []
+        answers = inquirer.prompt(questions, theme=GreenPassion())
+        selected = answers.get('projects') if answers else []
+
+        return selected

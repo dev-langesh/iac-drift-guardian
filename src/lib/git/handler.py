@@ -75,26 +75,51 @@ class GitHandler:
             return repo_url.replace("https://", f"https://{pat}@")
         return repo_url
 
-    def clone(self, repo_url: str, dest_dir: str, pat: Optional[str] = None) -> Optional[Repo]:
-        """Clones a git repository to the destination directory."""
-        if not self.is_git_installed():
-            logger.error("Git is not installed on this system. Please install git to proceed.")
-            return None
+    def authenticate_manually(self, url: str, pat: Optional[str] = None):
+        if not pat:
+            logger.info("Authentication required for private repository.")
+            pat = click.prompt(
+                click.style("? Enter Personal Access Token (PAT)", fg='bright_blue', bold=True),
+                hide_input=True
+            ).strip()
+            if not pat:
+                logger.error("PAT cannot be empty.")
+                return False
+        
+        # Inject PAT into URL
+        auth_url = url.replace("https://", f"https://oauth2:{pat}@")
+        
+        try:
+            subprocess.run(
+                ["git", "ls-remote", auth_url],
+                check=True, capture_output=True, text=True
+            )
+            logger.info(f"{click.style('✔', fg='green')} Authentication successful!")
+            return pat
+        except subprocess.CalledProcessError:
+            logger.error("Invalid PAT or access denied.")
+            return False
 
-        while os.path.exists(dest_dir) and os.listdir(dest_dir):
-            logger.warning(f"Destination directory {dest_dir} already exists and is not empty.")
-            prompt_msg = click.style(f"Please enter a new destination directory", fg='cyan')
-            dest_dir = click.prompt(prompt_msg).strip()
+    def clone(self, url: str, dest_dir: str, pat: str = None) -> bool:
+        """Clones a repository to the specified destination."""
+        if os.path.exists(dest_dir) and os.listdir(dest_dir):
+            logger.warning(f"Destination directory {click.style(dest_dir, fg='bright_cyan')} already exists and is not empty.")
+            new_dest = click.prompt(
+                click.style("? Please enter a new destination directory", fg='bright_blue', bold=True),
+                default=f"{dest_dir}_new"
+            ).strip()
+            return self.clone(url, new_dest, pat)
+
+        if pat:
+            url = url.replace("https://", f"https://oauth2:{pat}@")
 
         try:
-            url_to_clone = self._prepare_url(repo_url, pat)
-            logger.info(f"Cloning repository: {repo_url}")
-            repo = Repo.clone_from(url_to_clone, dest_dir)
-            logger.info(f"Successfully cloned to {dest_dir}")
-            return repo
-        except GitCommandError as e:
-            logger.error(f"An error occurred while cloning: {e}")
-            return None
+            click.echo("")
+            logger.info(f"Cloning repository: {click.style(url.split('@')[-1] if '@' in url else url, fg='bright_cyan')}...")
+            Repo.clone_from(url, dest_dir)
+            logger.info(f"{click.style('✔', fg='green')} Successfully cloned to {click.style(dest_dir, fg='bright_cyan')}")
+            click.echo("")
+            return True
         except Exception as e:
-            logger.error(f"Unexpected error during cloning: {e}")
-            return None
+            logger.error(f"An error occurred while cloning: {e}")
+            return False

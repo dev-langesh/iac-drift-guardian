@@ -5,7 +5,7 @@ import click
 # Add the project root to the python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils.logger import logger
+from src.utils.logger import logger, print_banner
 from src.config import load_config, get_default_config_path
 from src.lib.git.handler import GitHandler
 
@@ -17,6 +17,7 @@ from src.lib.git.handler import GitHandler
 def main(repo_url, config, pat, output_dir):
     """IaC Drift Guardian - Detect drift in your Infrastructure as Code."""
     
+    print_banner()
     logger.info("Starting IaC Drift Guardian...")
 
     config_data = {}
@@ -82,7 +83,7 @@ def main(repo_url, config, pat, output_dir):
     if final_source_path:
         logger.info(f"Source code ready at: {final_source_path}")
         
-        # 4. IaC Platform Detection (Milestone 2)
+        # 4. IaC Platform Detection 
         from src.lib.iac.detector import PlatformDetectionEngine
         detection_engine = PlatformDetectionEngine()
         
@@ -91,12 +92,12 @@ def main(repo_url, config, pat, output_dir):
         
         if selected_projects:
             for platform, project_dir in selected_projects:
-                logger.info(f"Ready to monitor {platform.upper()} project at {project_dir}")
-            # Future steps: pass this list to Milestone 3 (drift detection)
+                logger.info(f"Ready to monitor {click.style(platform.upper(), fg='green', bold=True)} project at {click.style(project_dir, fg='bright_cyan')}")
         else:
             logger.error("No projects selected. Exiting.")
             return
 
+        click.echo("") 
         logger.info("Task completed successfully!")
     else:
         logger.error("Task failed.")

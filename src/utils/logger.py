@@ -5,21 +5,30 @@ import click
 class ColoredFormatter(logging.Formatter):
     """Custom formatter to add colors to log levels."""
     COLORS = {
-        'DEBUG': 'cyan',
-        'INFO': 'green',
+        'DEBUG': 'bright_black',
+        'INFO': 'bright_blue',
         'WARNING': 'yellow',
         'ERROR': 'red',
         'CRITICAL': 'bright_red',
+    }
+    
+    ICONS = {
+        'INFO': 'ℹ',
+        'WARNING': '⚠',
+        'ERROR': '✖',
+        'CRITICAL': '❗',
+        'SUCCESS': '✔'
     }
 
     def format(self, record):
         level_name = record.levelname
         msg = record.getMessage()
         color = self.COLORS.get(level_name, 'white')
+        icon = self.ICONS.get(level_name, ' ')
         
-        # log type - message
-        level_text = click.style(level_name, fg=color, bold=True)
-        return f"{level_text} - {msg}"
+        # Professional format: ICON TYPE - message
+        level_text = click.style(f"{icon} {level_name:<7}", fg=color, bold=True)
+        return f"\n{level_text} | {msg}"
 
 def setup_logger(name: str = "iac-drift-guardian", level: int = logging.INFO):
     """Sets up a structured logger for the application."""
@@ -35,3 +44,13 @@ def setup_logger(name: str = "iac-drift-guardian", level: int = logging.INFO):
     return logger
 
 logger = setup_logger()
+
+def print_banner():
+    """Prints a professional CLI banner."""
+    banner = """
+    ╔══════════════════════════════════════════════════════════╗
+    ║                 IaC DRIFT GUARDIAN v1.0                  ║
+    ║        Protecting your Infrastructure from Drift         ║
+    ╚══════════════════════════════════════════════════════════╝
+    """
+    click.echo(click.style(banner, fg='bright_cyan', bold=True))
