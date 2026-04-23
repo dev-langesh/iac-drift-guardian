@@ -116,43 +116,79 @@ class PlatformDetectionEngine:
             AnsibleDetector()
         ]
 
-    def detect(self, root_dir: str, max_depth: int = 2) -> Optional[tuple[str, str]]:
+    def detect(self, root_dir: str, max_depth: int = 2) -> List[tuple[str, str]]:
         """
-        Detects the IaC platform and the directory it resides in.
-        Returns a tuple (platform_name, directory_path) or None.
+        Detects all IaC platforms and their directories.
+        Returns a list of tuples [(platform_name, absolute_directory_path), ...].
         """
         root_dir = os.path.abspath(root_dir)
+        detected_projects = []
         
-        # 1. Recursive search
-        for current_depth in range(max_depth + 1):
-            for root, dirs, files in os.walk(root_dir):
-                # Calculate current depth relative to root_dir
-                rel_path = os.path.relpath(root, root_dir)
-                depth = 0 if rel_path == '.' else len(rel_path.split(os.sep))
-                
-                if depth == current_depth:
-                    for detector in self.detectors:
-                        if detector.detect(root):
-                            logger.info(f"Detected {detector.get_name()} in: {root}")
-                            return detector.get_name(), root
-        
-        # 2. Manual fallback
-        logger.warning(f"No supported IaC platform detected in {root_dir} (up to {max_depth} levels deep).")
-        if click.confirm(click.style("Would you like to manually specify the IaC project directory?", fg='cyan'), default=True):
-            manual_dir = click.prompt(click.style("Enter the absolute path to the IaC project", fg='bright_blue')).strip()
-            if os.path.isdir(manual_dir):
-                # If manual dir provided, try one more time to detect platform in that specific dir
+        # 1. Collect all matches recursively
+        for root, dirs, files in os.walk(root_dir):
+            # Calculate current depth relative to root_dir
+            rel_path = os.path.relpath(root, root_dir)
+            depth = 0 if rel_path == '.' else len(rel_path.split(os.sep))
+            
+            if depth <= max_depth:
                 for detector in self.detectors:
-                    if detector.detect(manual_dir):
-                        return detector.get_name(), manual_dir
-                
-                # If still not detected, ask the user for the platform name
-                platforms = [d.get_name() for d in self.detectors]
-                platform_choice = click.prompt(
-                    click.style(f"Could not auto-detect platform in {manual_dir}. Please choose one", fg='yellow'),
-                    type=click.Choice(platforms + ['other'])
-                )
-                if platform_choice != 'other':
-                    return platform_choice, manual_dir
+                    if detector.detect(root):
+                        logger.info(f"Found {detector.get_name()} in: {root}")
+                        detected_projects.append((detector.get_name(), root))
+                        # Prevent double-counting the same directory with different detectors 
+                        # (e.g. Terraform and OpenTofu might both match)
+                        break 
         
-        return None
+        return detected_projects
+
+    def select_projects(self, root_dir: str, detected_projects: List[tuple[str, str]]) -> List[tuple[str, str]]:
+        """
+        Handles the selection of projects. If multiple, prompts the user.
+        If none, falls back to manual input.
+        """
+        root_dir = os.path.abspath(root_dir)
+
+        if not detected_projects:
+            logger.warning(f"No supported IaC platform detected in {root_dir} (up to 2 levels deep).")
+            if click.confirm(click.style("Would you like to manually specify the IaC project directory?", fg='cyan'), default=True):
+                manual_dir = click.prompt(click.style("Enter the absolute path to the IaC project", fg='bright_blue')).strip()
+                if os.path.isdir(manual_dir):
+                    # Try to detect platform in the manual dir
+                    for detector in self.detectors:
+                        if detector.detect(manual_dir):
+                            return [(detector.get_name(), manual_dir)]
+                    
+                    platforms = [d.get_name() for d in self.detectors]
+                    platform_choice = click.prompt(
+                        click.style(f"Could not auto-detect platform in {manual_dir}. Please choose one", fg='yellow'),
+                        type=click.Choice(platforms + ['other'])
+                    )
+                    if platform_choice != 'other':
+                        return [(platform_choice, manual_dir)]
+            return []
+
+        if len(detected_projects) == 1:
+            return detected_projects
+
+        # Multiple projects found, prompt for selection
+        import questionary
+        logger.info("Multiple IaC projects detected. Please select the ones you want to track:")
+        
+        choices = []
+        for platform, path in detected_projects:
+            rel_path = os.path.relpath(path, root_dir)
+            # Format: relative_path (platform)
+            label = f"{rel_path:<30} [{platform}]"
+            choices.append(questionary.Choice(label, value=(platform, path)))
+
+        selected = questionary.checkbox(
+            "Select projects to monitor (Space to select, Enter to confirm):",
+            choices=choices
+        ).ask()
+
+        if selected:
+            for platform, path in selected:
+                logger.info(f"Selected {platform.upper()} project at {path}")
+            return selected
+        
+        return []

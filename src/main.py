@@ -85,14 +85,16 @@ def main(repo_url, config, pat, output_dir):
         # 4. IaC Platform Detection (Milestone 2)
         from src.lib.iac.detector import PlatformDetectionEngine
         detection_engine = PlatformDetectionEngine()
-        result = detection_engine.detect(final_source_path)
         
-        if result:
-            platform, project_dir = result
-            logger.info(f"Successfully identified {platform.upper()} project at {project_dir}")
-            # Future steps: pass this to Milestone 3 (drift detection)
+        detected_list = detection_engine.detect(final_source_path)
+        selected_projects = detection_engine.select_projects(final_source_path, detected_list)
+        
+        if selected_projects:
+            for platform, project_dir in selected_projects:
+                logger.info(f"Ready to monitor {platform.upper()} project at {project_dir}")
+            # Future steps: pass this list to Milestone 3 (drift detection)
         else:
-            logger.error("Could not identify a supported IaC platform. Exiting.")
+            logger.error("No projects selected. Exiting.")
             return
 
         logger.info("Task completed successfully!")

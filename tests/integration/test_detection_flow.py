@@ -22,8 +22,8 @@ def test_all_platforms_and_cases(engine, platform, case_type, expected_platform)
     abs_path = os.path.abspath(base_path)
     
     result = engine.detect(abs_path, max_depth=2)
-    assert result is not None
-    detected_platform, project_dir = result
+    assert len(result) > 0
+    detected_platform, project_dir = result[0]
     
     assert detected_platform == expected_platform
     if case_type == "nested":
@@ -41,5 +41,7 @@ def test_manual_fallback_refusal(engine):
 
     from unittest.mock import patch
     with patch('click.confirm', return_value=False):
-        result = engine.detect(abs_path, max_depth=2)
-        assert result is None
+        detected_list = engine.detect(abs_path, max_depth=2)
+        assert len(detected_list) == 0
+        result = engine.select_projects(abs_path, detected_list)
+        assert result == []
