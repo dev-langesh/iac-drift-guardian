@@ -143,12 +143,38 @@ class PlatformDetectionEngine:
         
         return detected_projects
 
-    def select_projects(self, root_dir: str, detected_projects: List[tuple[str, str]]) -> List[tuple[str, str]]:
+    def select_projects(self, root_dir: str, detected_projects: List[tuple[str, str]], selected_paths: Optional[List[str]] = None) -> List[tuple[str, str]]:
         """
         Handles the selection of projects. If multiple, prompts the user.
-        If none, falls back to manual input.
+        If selected_paths is provided, filters the detected_projects by those paths.
         """
         root_dir = os.path.abspath(root_dir)
+
+        # If user pre-selected paths via config/args
+        if selected_paths:
+            final_selection = []
+            detected_rel_paths = []
+            for platform, path in detected_projects:
+                abs_path = os.path.abspath(path)
+                rel_path = os.path.normpath(os.path.relpath(path, root_dir))
+                detected_rel_paths.append(rel_path)
+                
+                # Check if any selected path matches this project
+                for sp in selected_paths:
+                    # If relative, join with root_dir; if absolute, use as is
+                    sp_abs = os.path.abspath(os.path.join(root_dir, sp)) if not os.path.isabs(sp) else os.path.abspath(sp)
+                    if abs_path == sp_abs:
+                        final_selection.append((platform, path))
+                        break
+            
+            if final_selection:
+                logger.info(f"Using pre-selected projects: {click.style(', '.join(selected_paths), fg='bright_blue')}")
+                return final_selection
+            else:
+                logger.warning("None of the pre-selected projects were detected.")
+                if len(detected_rel_paths) > 0:
+                    logger.warning(f"Detected projects were at: {click.style(', '.join(detected_rel_paths), fg='cyan')}")
+                logger.info("Falling back to interactive mode.")
 
         if not detected_projects:
             logger.warning(f"No supported IaC platform detected in {root_dir} (up to {self.max_depth} levels deep).")

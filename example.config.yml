@@ -1,0 +1,32 @@
+# IaC Drift Guardian Configuration
+# This file allows you to pre-configure the tool to run in a non-interactive mode.
+# Command-line arguments will override these values.
+
+# The Git repository URL or absolute local path to scan.
+# repoUrl: "https://github.com/user/my-iac-repo.git"
+
+# Personal Access Token for Git authentication (optional for public repos).
+# pat: "your_pat_here"
+
+# The directory where repositories will be cloned.
+outputDir: "cloned_repos"
+
+# Maximum depth to search for IaC projects from the root directory.
+# Default is 3.
+maxDepth: 3
+
+# Action to take when the destination directory already exists.
+# Options: 
+#   - pull: Pull latest changes if it's a matching git repo (fails if dirty)
+#   - continue: Use existing local code without updating
+#   - override: Delete the existing directory and clone fresh
+#   - new: (Not recommended for non-interactive) creates a _v2 directory
+collisionAction: "pull"
+
+# List of specific project directories (relative to root) to monitor.
+# If provided, the tool will skip the interactive selection prompt.
+# Example: 
+# selectedProjects:
+#   - "terraform/production"
+#   - "ansible/site"
+# selectedProjects: []

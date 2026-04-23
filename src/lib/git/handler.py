@@ -112,7 +112,7 @@ class GitHandler:
         except (AttributeError, IndexError):
             return False
 
-    def clone(self, url: str, dest_dir: str, pat: str = None) -> str:
+    def clone(self, url: str, dest_dir: str, pat: str = None, collision_action: str = None) -> str:
         """
         Clones a repository or updates it if it already exists.
         Returns the final destination directory path or False on failure.
@@ -129,40 +129,44 @@ class GitHandler:
 
             matching_repo = is_git_repo and self._is_same_remote(repo, url)
 
-            # 2. Collision options - Ask user what to do
+            # 2. Collision options - Use provided action or ask user
             import inquirer
             from inquirer.themes import GreenPassion
             
-            choices = []
-            if matching_repo:
-                choices.extend([
-                    ("Pull latest changes from remote", "pull"),
-                    ("Use existing local code", "continue"),
-                ])
-            
-            choices.extend([
-                ("Clone in different directory", "new"),
-                ("Override existing directory (Delete everything)", "override"),
-                ("Use a different repository URL", "cancel")
-            ])
-            
-            questions = [
-                inquirer.List(
-                    'action',
-                    message=f"Directory {os.path.basename(dest_dir)} already exists. How would you like to proceed?",
-                    choices=choices,
-                ),
-            ]
-            
-            answers = inquirer.prompt(questions, theme=GreenPassion())
-            
-            # Handle Ctrl+C (Inquirer returns None when cancelled)
-            if answers is None:
-                click.echo("\n")
-                logger.info("Aborted by user.")
-                sys.exit(0)
+            action = collision_action
+            if not action:
+                choices = []
+                if matching_repo:
+                    choices.extend([
+                        ("Pull latest changes from remote", "pull"),
+                        ("Use existing local code", "continue"),
+                    ])
                 
-            action = answers.get('action')
+                choices.extend([
+                    ("Clone in different directory", "new"),
+                    ("Override existing directory (Delete everything)", "override"),
+                    ("Use a different repository URL", "cancel")
+                ])
+                
+                questions = [
+                    inquirer.List(
+                        'action',
+                        message=f"Directory {os.path.basename(dest_dir)} already exists. How would you like to proceed?",
+                        choices=choices,
+                    ),
+                ]
+                
+                answers = inquirer.prompt(questions, theme=GreenPassion())
+                
+                # Handle Ctrl+C (Inquirer returns None when cancelled)
+                if answers is None:
+                    click.echo("\n")
+                    logger.info("Aborted by user.")
+                    sys.exit(0)
+                    
+                action = answers.get('action')
+            else:
+                logger.info(f"Using pre-configured collision action: {click.style(action, fg='bright_blue')}")
 
             if action == "pull":
                 if repo.is_dirty(untracked_files=True):

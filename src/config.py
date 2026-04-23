@@ -9,6 +9,9 @@ class ConfigModel(BaseModel):
     iac_type: Optional[str] = Field(None, alias="iacType")
     pat: Optional[str] = None
     output_dir: str = Field("cloned_repos", alias="outputDir")
+    max_depth: int = Field(3, alias="maxDepth")
+    selected_projects: Optional[list[str]] = Field(None, alias="selectedProjects")
+    collision_action: Optional[str] = Field(None, alias="collisionAction")
 
     class Config:
         populate_by_name = True

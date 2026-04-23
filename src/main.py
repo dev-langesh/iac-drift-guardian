@@ -14,7 +14,10 @@ from src.lib.git.handler import GitHandler
 @click.option('--config', '-c', help='Path to the configuration file (YAML or JSON).')
 @click.option('--pat', '-p', help='Personal Access Token for Git authentication.')
 @click.option('--output-dir', '-o', help='Directory to clone the repository into.')
-def main(repo_url, config, pat, output_dir):
+@click.option('--max-depth', '-d', type=int, help='Maximum depth to search for IaC projects.')
+@click.option('--projects', '-s', help='Comma-separated list of relative paths to projects to monitor.')
+@click.option('--collision', help='Action to take on directory collision (pull, continue, override, new).')
+def main(repo_url, config, pat, output_dir, max_depth, projects, collision):
     """IaC Drift Guardian - Detect drift in your Infrastructure as Code."""
     
     print_banner()
@@ -33,10 +36,20 @@ def main(repo_url, config, pat, output_dir):
             if config:
                 return
 
-    # 2. Merge initial values
+    # 2. Merge values (CLI args override config file)
     repo_url = repo_url or config_data.get('repo_url')
     pat = pat or config_data.get('pat')
     output_dir = output_dir or config_data.get('output_dir') or 'cloned_repos'
+    max_depth = max_depth or config_data.get('max_depth') or 3
+    
+    # Handle selected projects (from CLI as string, from config as list)
+    selected_projects = None
+    if projects:
+        selected_projects = [p.strip() for p in projects.split(',')]
+    else:
+        selected_projects = config_data.get('selected_projects')
+        
+    collision_action = collision or config_data.get('collision_action')
 
     git_handler = GitHandler(pat=pat)
     final_source_path = None
@@ -67,9 +80,10 @@ def main(repo_url, config, pat, output_dir):
                 repo_name = repo_url.split('/')[-1].replace('.git', '')
                 dest_path = os.path.join(output_dir, repo_name)
                 
-                repo = git_handler.clone(repo_url, dest_path, pat)
+                # Pass collision_action to clone
+                repo = git_handler.clone(repo_url, dest_path, pat, collision_action=collision_action)
                 if repo:
-                    final_source_path = dest_path
+                    final_source_path = repo
                 else:
                     repo_url = None # Force retry
             else:
@@ -85,13 +99,14 @@ def main(repo_url, config, pat, output_dir):
         
         # 4. IaC Platform Detection 
         from src.lib.iac.detector import PlatformDetectionEngine
-        detection_engine = PlatformDetectionEngine()
+        detection_engine = PlatformDetectionEngine(max_depth=max_depth)
         
         detected_list = detection_engine.detect(final_source_path)
-        selected_projects = detection_engine.select_projects(final_source_path, detected_list)
+        # Pass pre-selected projects to bypass prompt
+        monitoring_projects = detection_engine.select_projects(final_source_path, detected_list, selected_paths=selected_projects)
         
-        if selected_projects:
-            for platform, project_dir in selected_projects:
+        if monitoring_projects:
+            for platform, project_dir in monitoring_projects:
                 logger.info(f"Ready to monitor {click.style(platform.upper(), fg='green', bold=True)} project at {click.style(project_dir, fg='bright_cyan')}")
         else:
             logger.error("No projects selected. Exiting.")
