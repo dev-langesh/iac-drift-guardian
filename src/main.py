@@ -81,6 +81,20 @@ def main(repo_url, config, pat, output_dir):
 
     if final_source_path:
         logger.info(f"Source code ready at: {final_source_path}")
+        
+        # 4. IaC Platform Detection (Milestone 2)
+        from src.lib.iac.detector import PlatformDetectionEngine
+        detection_engine = PlatformDetectionEngine()
+        result = detection_engine.detect(final_source_path)
+        
+        if result:
+            platform, project_dir = result
+            logger.info(f"Successfully identified {platform.upper()} project at {project_dir}")
+            # Future steps: pass this to Milestone 3 (drift detection)
+        else:
+            logger.error("Could not identify a supported IaC platform. Exiting.")
+            return
+
         logger.info("Task completed successfully!")
     else:
         logger.error("Task failed.")
