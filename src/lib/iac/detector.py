@@ -108,7 +108,7 @@ class AnsibleDetector(IaCDetector):
 class PlatformDetectionEngine:
     """Orchestrates the detection of IaC platforms across directory levels."""
     
-    def __init__(self):
+    def __init__(self,max_depth: int = 3):
         self.detectors: List[IaCDetector] = [
             TerraformDetector(),
             OpenTofuDetector(),
@@ -116,7 +116,9 @@ class PlatformDetectionEngine:
             AnsibleDetector()
         ]
 
-    def detect(self, root_dir: str, max_depth: int = 3) -> List[tuple[str, str]]:
+        self.max_depth = max_depth
+
+    def detect(self, root_dir: str) -> List[tuple[str, str]]:
         """
         Detects all IaC platforms and their directories.
         Returns a list of tuples [(platform_name, absolute_directory_path), ...].
@@ -130,7 +132,7 @@ class PlatformDetectionEngine:
             rel_path = os.path.relpath(root, root_dir)
             depth = 0 if rel_path == '.' else len(rel_path.split(os.sep))
             
-            if depth <= max_depth:
+            if depth <= self.max_depth:
                 for detector in self.detectors:
                     if detector.detect(root):
                         logger.info(f"Found {detector.get_name()} in: {root}")
@@ -149,7 +151,9 @@ class PlatformDetectionEngine:
         root_dir = os.path.abspath(root_dir)
 
         if not detected_projects:
-            logger.warning(f"No supported IaC platform detected in {root_dir} (up to 2 levels deep).")
+            logger.warning(f"No supported IaC platform detected in {root_dir} (up to {self.max_depth} levels deep).")
+            click.echo("")
+            
             if click.confirm(click.style("Would you like to manually specify the IaC project directory?", fg='cyan'), default=True):
                 manual_dir = click.prompt(click.style("Enter the absolute path to the IaC project", fg='bright_blue')).strip()
                 if os.path.isdir(manual_dir):
@@ -195,7 +199,14 @@ class PlatformDetectionEngine:
             ),
         ]
 
+        import sys
         answers = inquirer.prompt(questions, theme=GreenPassion())
+        
+        if answers is None:
+            click.echo("\n")
+            logger.info("Aborted by user.")
+            sys.exit(0)
+            
         selected = answers.get('projects') if answers else []
 
         return selected

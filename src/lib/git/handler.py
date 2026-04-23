@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import click
+import sys
 import re
 from typing import Optional, Tuple
 from git import Repo, GitCommandError
@@ -100,26 +101,122 @@ class GitHandler:
             logger.error("Invalid PAT or access denied.")
             return False
 
-    def clone(self, url: str, dest_dir: str, pat: str = None) -> bool:
-        """Clones a repository to the specified destination."""
-        if os.path.exists(dest_dir) and os.listdir(dest_dir):
-            logger.warning(f"Destination directory {click.style(dest_dir, fg='bright_cyan')} already exists and is not empty.")
-            new_dest = click.prompt(
-                click.style("? Please enter a new destination directory", fg='bright_blue', bold=True),
-                default=f"{dest_dir}_new"
-            ).strip()
-            return self.clone(url, new_dest, pat)
+    def _is_same_remote(self, repo: Repo, url: str) -> bool:
+        """Checks if the repository's remote URL matches the target URL."""
+        try:
+            remote_url = repo.remotes.origin.url
+            # Strip auth from both for comparison
+            target_clean = re.sub(r'https://[^@]+@', 'https://', url)
+            remote_clean = re.sub(r'https://[^@]+@', 'https://', remote_url)
+            return target_clean == remote_clean or remote_url == url
+        except (AttributeError, IndexError):
+            return False
 
+    def clone(self, url: str, dest_dir: str, pat: str = None) -> str:
+        """
+        Clones a repository or updates it if it already exists.
+        Returns the final destination directory path or False on failure.
+        """
+        if os.path.exists(dest_dir) and os.listdir(dest_dir):
+            logger.info(f"Directory {click.style(dest_dir, fg='bright_cyan')} already exists.\n\n")
+            # 1. Check if it's a matching git repo
+            is_git_repo = False
+            try:
+                repo = Repo(dest_dir)
+                is_git_repo = True
+            except Exception:
+                is_git_repo = False
+
+            matching_repo = is_git_repo and self._is_same_remote(repo, url)
+
+            # 2. Collision options - Ask user what to do
+            import inquirer
+            from inquirer.themes import GreenPassion
+            
+            choices = []
+            if matching_repo:
+                choices.extend([
+                    ("Pull latest changes from remote", "pull"),
+                    ("Use existing local code", "continue"),
+                ])
+            
+            choices.extend([
+                ("Clone in different directory", "new"),
+                ("Override existing directory (Delete everything)", "override"),
+                ("Use a different repository URL", "cancel")
+            ])
+            
+            questions = [
+                inquirer.List(
+                    'action',
+                    message=f"Directory {os.path.basename(dest_dir)} already exists. How would you like to proceed?",
+                    choices=choices,
+                ),
+            ]
+            
+            answers = inquirer.prompt(questions, theme=GreenPassion())
+            
+            # Handle Ctrl+C (Inquirer returns None when cancelled)
+            if answers is None:
+                click.echo("\n")
+                logger.info("Aborted by user.")
+                sys.exit(0)
+                
+            action = answers.get('action')
+
+            if action == "pull":
+                if repo.is_dirty(untracked_files=True):
+                    logger.warning("Local repository has uncommitted changes. Pull might fail or cause conflicts.")
+                    if not click.confirm(click.style("Do you still want to attempt a pull?", fg='yellow'), default=False):
+                        return self.clone(url, dest_dir, pat) # Re-prompt
+                
+                try:
+                    logger.info("Attempting to pull updates...")
+                    repo.remotes.origin.pull()
+                    logger.info(f"{click.style('✔', fg='green')} Successfully updated existing repository at {click.style(dest_dir, fg='bright_cyan')}")
+                    return dest_dir
+                except Exception as e:
+                    logger.error(f"Failed to pull updates: {e}")
+                    return self.clone(url, dest_dir, pat) # Re-prompt for other options
+
+            elif action == "continue":
+                logger.info(f"Using existing code at {click.style(dest_dir, fg='bright_cyan')}")
+                return dest_dir
+
+            elif action == "new":
+                parent_dir = os.path.dirname(dest_dir)
+                new_name = click.prompt(
+                    click.style("? Enter new directory name", fg='bright_blue', bold=True),
+                    default=f"{os.path.basename(dest_dir)}_v2"
+                ).strip()
+                return self.clone(url, os.path.join(parent_dir, new_name), pat)
+            
+            elif action == "override":
+                if click.confirm(click.style(f"❗ This will PERMANENTLY DELETE {dest_dir}. Continue?", fg='red', bold=True)):
+                    try:
+                        shutil.rmtree(dest_dir)
+                        logger.info(f"Deleted existing directory: {dest_dir}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete directory: {e}")
+                        return False
+                else:
+                    return self.clone(url, dest_dir, pat)
+            else:
+                return False
+
+        # 3. Standard Clone
         if pat:
-            url = url.replace("https://", f"https://oauth2:{pat}@")
+            clone_url = url.replace("https://", f"https://oauth2:{pat}@")
+        else:
+            clone_url = url
 
         try:
             click.echo("")
-            logger.info(f"Cloning repository: {click.style(url.split('@')[-1] if '@' in url else url, fg='bright_cyan')}...")
-            Repo.clone_from(url, dest_dir)
+            logger.info(f"Cloning repository: {click.style(url, fg='bright_cyan')}...")
+            Repo.clone_from(clone_url, dest_dir)
             logger.info(f"{click.style('✔', fg='green')} Successfully cloned to {click.style(dest_dir, fg='bright_cyan')}")
             click.echo("")
-            return True
+            return dest_dir
         except Exception as e:
             logger.error(f"An error occurred while cloning: {e}")
             return False
