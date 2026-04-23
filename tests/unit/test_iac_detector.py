@@ -51,3 +51,45 @@ def test_opentofu_detection(temp_dir):
     # .tofu signature
     (temp_dir / "main.tofu").write_text('resource "null_resource" "test" {}')
     assert detector.detect(str(temp_dir)) is True
+
+def test_engine_detect_multi(temp_dir):
+    from src.lib.iac.detector import PlatformDetectionEngine
+    # Create two subdirs with different IaC
+    tf_dir = temp_dir / "tf"
+    tf_dir.mkdir()
+    (tf_dir / "main.tf").write_text('resource "aws_instance" "test" {}')
+    
+    ansible_dir = temp_dir / "ansible"
+    ansible_dir.mkdir()
+    (ansible_dir / "playbook.yml").write_text("hosts: all\ntasks: []")
+    
+    engine = PlatformDetectionEngine()
+    results = engine.detect(str(temp_dir))
+    assert len(results) == 2
+    platforms = [r[0] for r in results]
+    assert "terraform" in platforms
+    assert "ansible" in platforms
+
+def test_engine_select_projects_single(temp_dir):
+    from src.lib.iac.detector import PlatformDetectionEngine
+    engine = PlatformDetectionEngine()
+    detected = [("terraform", str(temp_dir))]
+    # Single project should return immediately without prompt
+    selected = engine.select_projects(str(temp_dir), detected)
+    assert selected == detected
+
+def test_engine_select_projects_multi(temp_dir):
+    from src.lib.iac.detector import PlatformDetectionEngine
+    from unittest.mock import patch, MagicMock
+    
+    engine = PlatformDetectionEngine()
+    detected = [("terraform", "/path/a"), ("ansible", "/path/b")]
+    
+    with patch('questionary.checkbox') as mock_checkbox:
+        mock_instance = MagicMock()
+        mock_checkbox.return_value = mock_instance
+        mock_instance.ask.return_value = [("terraform", "/path/a")]
+        
+        selected = engine.select_projects(str(temp_dir), detected)
+        assert len(selected) == 1
+        assert selected[0][0] == "terraform"

@@ -45,3 +45,14 @@ def test_manual_fallback_refusal(engine):
         assert len(detected_list) == 0
         result = engine.select_projects(abs_path, detected_list)
         assert result == []
+
+def test_multi_project_detection(engine):
+    # This uses the sample_projects/multi directory created earlier
+    abs_path = os.path.abspath("sample_projects/multi")
+    
+    result = engine.detect(abs_path, max_depth=2)
+    # It should find 5 projects
+    assert len(result) == 5
+    for platform, path in result:
+        assert any(x in platform for x in ["terraform", "opentofu", "ansible", "pulumi"])
+        assert any(x in path for x in ["ec2", "fanout", "tofu","ansible", "pulumi"])
