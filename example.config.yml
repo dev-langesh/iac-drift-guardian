@@ -30,3 +30,7 @@ collisionAction: "pull"
 #   - "terraform/production"
 #   - "ansible/site"
 # selectedProjects: []
+
+# AWS SNS Topic ARN for drift notifications
+# Example: arn:aws:sns:us-east-1:123456789012:iac-drift-alerts
+# awsSnsArn: "arn:aws:sns:REGION:ACCOUNT:TOPIC"

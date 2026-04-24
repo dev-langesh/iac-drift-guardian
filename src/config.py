@@ -12,6 +12,7 @@ class ConfigModel(BaseModel):
     max_depth: int = Field(3, alias="maxDepth")
     selected_projects: Optional[list[str]] = Field(None, alias="selectedProjects")
     collision_action: Optional[str] = Field(None, alias="collisionAction")
+    aws_sns_arn: Optional[str] = Field(None, alias="awsSnsArn")
 
     class Config:
         populate_by_name = True

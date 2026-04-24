@@ -17,7 +17,8 @@ from src.lib.git.handler import GitHandler
 @click.option('--max-depth', '-d', type=int, help='Maximum depth to search for IaC projects.')
 @click.option('--projects', '-s', help='Comma-separated list of relative paths to projects to monitor.')
 @click.option('--collision', help='Action to take on directory collision (pull, continue, override, new).')
-def main(repo_url, config, pat, output_dir, max_depth, projects, collision):
+@click.option('--sns-arn', help='AWS SNS Topic ARN for drift notifications.')
+def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_arn):
     """IaC Drift Guardian - Detect drift in your Infrastructure as Code."""
     
     print_banner()
@@ -41,6 +42,7 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision):
     pat = pat or config_data.get('pat')
     output_dir = output_dir or config_data.get('output_dir') or 'cloned_repos'
     max_depth = max_depth or config_data.get('max_depth') or 3
+    sns_arn = sns_arn or config_data.get('aws_sns_arn')
     
     # Handle selected projects (from CLI as string, from config as list)
     selected_projects = None
@@ -59,6 +61,12 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision):
         if not repo_url:
             prompt_msg = click.style("Please enter the Git repository URL or absolute local path", fg='bright_blue', bold=True)
             repo_url = click.prompt(prompt_msg).strip()
+            
+        if not sns_arn:
+            sns_prompt_msg = click.style("Please enter the AWS SNS Topic ARN for notifications (or press Enter to skip)", fg='bright_blue')
+            sns_arn = click.prompt(sns_prompt_msg, default="", show_default=False).strip()
+            if not sns_arn:
+                logger.warning("No SNS ARN provided. Notifications will be disabled.")
 
         # Case A: Absolute Local Path
         if os.path.isabs(repo_url):
@@ -106,8 +114,23 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision):
         monitoring_projects = detection_engine.select_projects(final_source_path, detected_list, selected_paths=selected_projects)
         
         if monitoring_projects:
+            from src.lib.docker.builder import DockerBuilder
+            docker_builder = DockerBuilder(output_dir=output_dir)
+            
             for platform, project_dir in monitoring_projects:
-                logger.info(f"Ready to monitor {click.style(platform.upper(), fg='green', bold=True)} project at {click.style(project_dir, fg='bright_cyan')}")
+                logger.info(f"\nReady to process {click.style(platform.upper(), fg='green', bold=True)} project at {click.style(project_dir, fg='bright_cyan')}")
+                
+                # Build Docker Image
+                image_name = docker_builder.build_image(
+                    iac_tool=platform,
+                    project_dir=project_dir,
+                    sns_arn=sns_arn
+                )
+                
+                if image_name:
+                    logger.info(f"Docker image {click.style(image_name, fg='bright_blue')} is ready for ECR push.")
+                else:
+                    logger.error(f"Failed to build Docker image for {project_dir}")
         else:
             logger.error("No projects selected. Exiting.")
             return
