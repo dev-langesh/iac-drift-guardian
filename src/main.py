@@ -8,6 +8,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils.logger import logger, print_banner
 from src.config import load_config, get_default_config_path
 from src.lib.git.handler import GitHandler
+from src.lib.iac.detector import PlatformDetectionEngine
+from src.lib.docker.builder import DockerBuilder
 
 @click.command()
 @click.option('--repo-url', '-r', help='URL of the Git repository or absolute path to local source.')
@@ -106,7 +108,6 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_
         logger.info(f"Source code ready at: {final_source_path}")
         
         # 4. IaC Platform Detection 
-        from src.lib.iac.detector import PlatformDetectionEngine
         detection_engine = PlatformDetectionEngine(max_depth=max_depth)
         
         detected_list = detection_engine.detect(final_source_path)
@@ -114,7 +115,6 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_
         monitoring_projects = detection_engine.select_projects(final_source_path, detected_list, selected_paths=selected_projects)
         
         if monitoring_projects:
-            from src.lib.docker.builder import DockerBuilder
             docker_builder = DockerBuilder(output_dir=output_dir)
             
             for platform, project_dir in monitoring_projects:

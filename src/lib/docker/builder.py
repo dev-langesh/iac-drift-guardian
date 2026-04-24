@@ -16,29 +16,45 @@ class DockerBuilder:
         
         # Base image
         dockerfile_content = [
-            "FROM python:3.12-slim",
+            "FROM ubuntu:24.04",
+            "",
             "ENV DEBIAN_FRONTEND=noninteractive",
+            "",
             "WORKDIR /workspace",
-            "RUN apt-get update && apt-get install -y curl unzip wget git && rm -rf /var/lib/apt/lists/*",
-            "RUN pip install --no-cache-dir boto3"
+            "",
+            "RUN apt update && apt install -y curl unzip wget git gnupg software-properties-common",
+            "",
+            "RUN apt install -y python3-pip",
+            "",
+            "RUN pip install boto3 --break-system-packages",
+            ""
         ]
         
         # Install specific IaC tool
         if iac_tool == "terraform":
-            dockerfile_content.extend([
-                "RUN wget https://releases.hashicorp.com/terraform/1.8.0/terraform_1.8.0_linux_amd64.zip && \\",
-                "    unzip terraform_1.8.0_linux_amd64.zip -d /usr/local/bin && \\",
-                "    rm terraform_1.8.0_linux_amd64.zip"
+           dockerfile_content.extend([
+                # 1. Download and dearmor the GPG key
+                "RUN wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null",
+                "",
+                
+                # 2. Add the official repo (Using escaped double quotes for the grep command)
+                "RUN echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main\" | tee /etc/apt/sources.list.d/hashicorp.list",
+                "",
+                # 3. Update and Install
+                "RUN apt update && apt install -y terraform"
+                "",
             ])
         elif iac_tool == "opentofu":
             dockerfile_content.extend([
-                "RUN wget https://github.com/opentofu/opentofu/releases/download/v1.7.0/tofu_1.7.0_linux_amd64.tar.gz && \\",
-                "    tar -xvf tofu_1.7.0_linux_amd64.tar.gz -C /usr/local/bin tofu && \\",
+                "RUN wget https://github.com/opentofu/opentofu/releases/download/v1.7.0/tofu_1.7.0_linux_amd64.tar.gz && \
+"
+                "    tar -xvf tofu_1.7.0_linux_amd64.tar.gz -C /usr/local/bin tofu && \
+"
                 "    rm tofu_1.7.0_linux_amd64.tar.gz"
             ])
         elif iac_tool == "ansible":
             dockerfile_content.extend([
-                "RUN apt-get update && apt-get install -y sshpass && rm -rf /var/lib/apt/lists/*",
+                "RUN apt update && apt install -y sshpass && rm -rf /var/lib/apt/lists/*",
                 "RUN pip install --no-cache-dir ansible"
             ])
         elif iac_tool == "pulumi":
@@ -52,8 +68,11 @@ class DockerBuilder:
         rel_project_dir = os.path.relpath(project_dir, root_dir)
         
         dockerfile_content.extend([
+            "",
             "COPY src/scripts/drift_detector.py /workspace/drift_detector.py",
-            f"COPY {rel_project_dir} /workspace/iac_source"
+            "",
+            f"COPY {rel_project_dir} /workspace/iac_source",
+            ""
         ])
         
         # Entrypoint configuration
