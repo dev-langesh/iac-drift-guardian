@@ -34,3 +34,7 @@ collisionAction: "pull"
 # AWS SNS Topic ARN for drift notifications
 # Example: arn:aws:sns:us-east-1:123456789012:iac-drift-alerts
 # awsSnsArn: "arn:aws:sns:REGION:ACCOUNT:TOPIC"
+
+# AWS Credentials (optional, will be prompted if not provided)
+# awsAccessKey: "YOUR_ACCESS_KEY"
+# awsSecretKey: "YOUR_SECRET_KEY"

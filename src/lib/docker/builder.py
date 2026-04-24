@@ -135,3 +135,47 @@ class DockerBuilder:
         except Exception as e:
             logger.error(f"Unexpected error during docker build: {e}")
             return None
+
+    def run_container(self, image_name: str, aws_access_key: str = None, aws_secret_key: str = None) -> bool:
+        """Runs the built Docker container locally with AWS credentials."""
+        logger.info(f"Starting drift detection container: {click.style(image_name, fg='bright_blue')}...")
+        
+        try:
+            command = [
+                "docker", "run", "--rm",
+            ]
+            
+            # Pass AWS credentials as environment variables if provided
+            if aws_access_key:
+                command.extend(["-e", f"AWS_ACCESS_KEY_ID={aws_access_key}"])
+            if aws_secret_key:
+                command.extend(["-e", f"AWS_SECRET_ACCESS_KEY={aws_secret_key}"])
+                
+            command.append(image_name)
+            
+            # Run the container and stream output
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            
+            for line in process.stdout:
+                click.echo(f"  {click.style('|', fg='bright_black')} {line.strip()}")
+                
+            process.wait()
+            
+            if process.returncode == 0:
+                logger.info(f"✔ Container execution finished: No drift detected.")
+                return True
+            elif process.returncode == 2:
+                logger.warning(f"⚠ Container execution finished: Drift detected!")
+                return True
+            else:
+                logger.error(f"Container execution failed with exit code {process.returncode}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to run Docker container: {e}")
+            return False

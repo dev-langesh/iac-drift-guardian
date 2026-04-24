@@ -20,7 +20,9 @@ from src.lib.docker.builder import DockerBuilder
 @click.option('--projects', '-s', help='Comma-separated list of relative paths to projects to monitor.')
 @click.option('--collision', help='Action to take on directory collision (pull, continue, override, new).')
 @click.option('--sns-arn', help='AWS SNS Topic ARN for drift notifications.')
-def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_arn):
+@click.option('--aws-access-key', help='AWS Access Key ID.')
+@click.option('--aws-secret-key', help='AWS Secret Access Key.')
+def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_arn, aws_access_key, aws_secret_key):
     """IaC Drift Guardian - Detect drift in your Infrastructure as Code."""
     
     print_banner()
@@ -45,6 +47,8 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_
     output_dir = output_dir or config_data.get('output_dir') or 'cloned_repos'
     max_depth = max_depth or config_data.get('max_depth') or 3
     sns_arn = sns_arn or config_data.get('aws_sns_arn')
+    aws_access_key = aws_access_key or config_data.get('aws_access_key')
+    aws_secret_key = aws_secret_key or config_data.get('aws_secret_key')
     
     # Handle selected projects (from CLI as string, from config as list)
     selected_projects = None
@@ -115,8 +119,18 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_
         monitoring_projects = detection_engine.select_projects(final_source_path, detected_list, selected_paths=selected_projects)
         
         if monitoring_projects:
+            from src.lib.docker.builder import DockerBuilder
             docker_builder = DockerBuilder(output_dir=output_dir)
             
+            # 5. Prompt for AWS credentials if needed (only once)
+            # We prompt if any monitoring project might need AWS access (SNS or cloud-based IaC)
+            if not aws_access_key or not aws_secret_key:
+                logger.info("\n" + click.style("AWS credentials required for drift detection and notifications.", fg='yellow'))
+                if not aws_access_key:
+                    aws_access_key = click.prompt(click.style("Please enter AWS Access Key ID", fg='bright_blue'), hide_input=True)
+                if not aws_secret_key:
+                    aws_secret_key = click.prompt(click.style("Please enter AWS Secret Access Key", fg='bright_blue'), hide_input=True)
+
             for platform, project_dir in monitoring_projects:
                 logger.info(f"\nReady to process {click.style(platform.upper(), fg='green', bold=True)} project at {click.style(project_dir, fg='bright_cyan')}")
                 
@@ -128,7 +142,15 @@ def main(repo_url, config, pat, output_dir, max_depth, projects, collision, sns_
                 )
                 
                 if image_name:
-                    logger.info(f"Docker image {click.style(image_name, fg='bright_blue')} is ready for ECR push.")
+                    logger.info(f"Docker image {click.style(image_name, fg='bright_blue')} is ready.")
+                    
+                    # Run the container locally
+                    if click.confirm(click.style(f"Do you want to run drift detection for {platform.upper()} now?", fg='cyan'), default=True):
+                        docker_builder.run_container(
+                            image_name=image_name,
+                            aws_access_key=aws_access_key,
+                            aws_secret_key=aws_secret_key
+                        )
                 else:
                     logger.error(f"Failed to build Docker image for {project_dir}")
         else:
